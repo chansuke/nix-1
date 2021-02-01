@@ -374,6 +374,17 @@ std::string AttrCursor::getAttrPathStr(Symbol name) const
     return concatStringsSep(".", getAttrPath(name));
 }
 
+std::optional<AttrValue> AttrCursor::getCachedValue()
+{
+    if (root->db) {
+        if (!cachedValue)
+            cachedValue = root->db->getAttr(getKey(), root->state.symbols);
+    }
+    if (cachedValue && !std::get_if<placeholder_t>(&cachedValue->second))
+        return cachedValue->second;
+    return std::nullopt;
+}
+
 Value & AttrCursor::forceValue()
 {
     debug("evaluating uncached attribute %s", getAttrPathStr());
@@ -498,16 +509,13 @@ std::shared_ptr<AttrCursor> AttrCursor::findAlongAttrPath(const std::vector<Symb
 
 std::string AttrCursor::getString()
 {
-    if (root->db) {
-        if (!cachedValue)
-            cachedValue = root->db->getAttr(getKey(), root->state.symbols);
-        if (cachedValue && !std::get_if<placeholder_t>(&cachedValue->second)) {
-            if (auto s = std::get_if<string_t>(&cachedValue->second)) {
-                debug("using cached string attribute '%s'", getAttrPathStr());
-                return s->first;
-            } else
-                throw TypeError("'%s' is not a string", getAttrPathStr());
-        }
+    auto value = getCachedValue();
+    if (value) {
+        if (auto s = std::get_if<string_t>(&(value.value()))) {
+            debug("using cached string attribute '%s'", getAttrPathStr());
+            return s->first;
+        } else
+            throw TypeError("'%s' is not a string", getAttrPathStr());
     }
 
     auto & v = forceValue();
@@ -520,25 +528,22 @@ std::string AttrCursor::getString()
 
 string_t AttrCursor::getStringWithContext()
 {
-    if (root->db) {
-        if (!cachedValue)
-            cachedValue = root->db->getAttr(getKey(), root->state.symbols);
-        if (cachedValue && !std::get_if<placeholder_t>(&cachedValue->second)) {
-            if (auto s = std::get_if<string_t>(&cachedValue->second)) {
-                bool valid = true;
-                for (auto & c : s->second) {
-                    if (!root->state.store->isValidPath(root->state.store->parseStorePath(c.first))) {
-                        valid = false;
-                        break;
-                    }
+    auto value = getCachedValue();
+    if (value) {
+        if (auto s = std::get_if<string_t>(&(value.value()))) {
+            bool valid = true;
+            for (auto & c : s->second) {
+                if (!root->state.store->isValidPath(root->state.store->parseStorePath(c.first))) {
+                    valid = false;
+                    break;
                 }
-                if (valid) {
-                    debug("using cached string attribute '%s'", getAttrPathStr());
-                    return *s;
-                }
-            } else
-                throw TypeError("'%s' is not a string", getAttrPathStr());
-        }
+            }
+            if (valid) {
+                debug("using cached string attribute '%s'", getAttrPathStr());
+                return *s;
+            }
+        } else
+            throw TypeError("'%s' is not a string", getAttrPathStr());
     }
 
     auto & v = forceValue();
@@ -553,16 +558,13 @@ string_t AttrCursor::getStringWithContext()
 
 bool AttrCursor::getBool()
 {
-    if (root->db) {
-        if (!cachedValue)
-            cachedValue = root->db->getAttr(getKey(), root->state.symbols);
-        if (cachedValue && !std::get_if<placeholder_t>(&cachedValue->second)) {
-            if (auto b = std::get_if<bool>(&cachedValue->second)) {
-                debug("using cached Boolean attribute '%s'", getAttrPathStr());
-                return *b;
-            } else
-                throw TypeError("'%s' is not a Boolean", getAttrPathStr());
-        }
+    auto value = getCachedValue();
+    if (value) {
+        if (auto b = std::get_if<bool>(&(value.value()))) {
+            debug("using cached Boolean attribute '%s'", getAttrPathStr());
+            return *b;
+        } else
+            throw TypeError("'%s' is not a Boolean", getAttrPathStr());
     }
 
     auto & v = forceValue();
@@ -575,16 +577,13 @@ bool AttrCursor::getBool()
 
 std::vector<Symbol> AttrCursor::getAttrs()
 {
-    if (root->db) {
-        if (!cachedValue)
-            cachedValue = root->db->getAttr(getKey(), root->state.symbols);
-        if (cachedValue && !std::get_if<placeholder_t>(&cachedValue->second)) {
-            if (auto attrs = std::get_if<std::vector<Symbol>>(&cachedValue->second)) {
-                debug("using cached attrset attribute '%s'", getAttrPathStr());
-                return *attrs;
-            } else
-                throw TypeError("'%s' is not an attribute set", getAttrPathStr());
-        }
+    auto value = getCachedValue();
+    if (value) {
+        if (auto attrs = std::get_if<std::vector<Symbol>>(&(value.value()))) {
+            debug("using cached attrset attribute '%s'", getAttrPathStr());
+            return *attrs;
+        } else
+            throw TypeError("'%s' is not an attribute set", getAttrPathStr());
     }
 
     auto & v = forceValue();

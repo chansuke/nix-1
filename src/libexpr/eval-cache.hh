@@ -114,6 +114,8 @@ public:
 
     bool isDerivation();
 
+    std::optional<AttrValue> getCachedValue();
+
     Value & forceValue();
 
     /* Force creation of the .drv file in the Nix store. */
