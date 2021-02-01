@@ -34,6 +34,8 @@ public:
         RootLoader rootLoader);
 
     std::shared_ptr<AttrCursor> getRoot();
+
+    void commit();
 };
 
 enum AttrType {
@@ -68,7 +70,6 @@ class AttrCursor : public std::enable_shared_from_this<AttrCursor>
 {
     friend class EvalCache;
 
-    ref<EvalCache> root;
     typedef std::optional<std::pair<std::shared_ptr<AttrCursor>, Symbol>> Parent;
     Parent parent;
     RootValue _value;
@@ -80,6 +81,7 @@ class AttrCursor : public std::enable_shared_from_this<AttrCursor>
 
 public:
 
+    ref<EvalCache> root;
     AttrCursor(
         ref<EvalCache> root,
         Parent parent,

@@ -1161,6 +1161,7 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
             return;
         v = resultingCursor->forceValue();
         v.evalCache = resultingCursor;
+        resultingCursor->root->commit();
         return;
     }
 

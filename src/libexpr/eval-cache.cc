@@ -308,6 +308,16 @@ std::shared_ptr<AttrCursor> EvalCache::getRoot()
     return std::make_shared<AttrCursor>(ref(shared_from_this()), std::nullopt);
 }
 
+void EvalCache::commit()
+{
+    if (db) {
+        debug("Saving the cache");
+        auto state(db->_state->lock());
+        if (state->txn->active)
+            state->txn->commit();
+    }
+}
+
 AttrCursor::AttrCursor(
     ref<EvalCache> root,
     Parent parent,
