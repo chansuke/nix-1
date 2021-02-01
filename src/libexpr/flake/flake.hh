@@ -6,6 +6,9 @@
 #include "value.hh"
 
 namespace nix {
+namespace eval_cache {
+    class EvalCache;
+}
 
 class EvalState;
 
@@ -139,4 +142,7 @@ void emitTreeAttrs(
     const fetchers::Input & input,
     Value & v, bool emptyRevFallback = false);
 
+ref<eval_cache::EvalCache> openEvalCache(
+    EvalState & state,
+    std::shared_ptr<flake::LockedFlake> lockedFlake);
 }

@@ -457,35 +457,6 @@ Value * InstallableFlake::getFlakeOutputs(EvalState & state, const flake::Locked
     return aOutputs->value;
 }
 
-ref<eval_cache::EvalCache> openEvalCache(
-    EvalState & state,
-    std::shared_ptr<flake::LockedFlake> lockedFlake)
-{
-    auto fingerprint = lockedFlake->getFingerprint();
-    return make_ref<nix::eval_cache::EvalCache>(
-        evalSettings.useEvalCache && evalSettings.pureEval
-            ? std::optional { std::cref(fingerprint) }
-            : std::nullopt,
-        state,
-        [&state, lockedFlake]()
-        {
-            /* For testing whether the evaluation cache is
-               complete. */
-            if (getEnv("NIX_ALLOW_EVAL").value_or("1") == "0")
-                throw Error("not everything is cached, but evaluation is not allowed");
-
-            auto vFlake = state.allocValue();
-            flake::callFlake(state, *lockedFlake, *vFlake);
-
-            state.forceAttrs(*vFlake);
-
-            auto aOutputs = vFlake->attrs->get(state.symbols.create("outputs"));
-            assert(aOutputs);
-
-            return aOutputs->value;
-        });
-}
-
 static std::string showAttrPaths(const std::vector<std::string> & paths)
 {
     std::string s;

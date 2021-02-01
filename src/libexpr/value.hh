@@ -6,6 +6,10 @@
 #include <gc/gc_allocator.h>
 #endif
 
+namespace nix::eval_cache {
+    class AttrCursor;
+}
+
 namespace nix {
 
 
@@ -113,6 +117,13 @@ friend std::string showType(const Value & v);
 friend void printValue(std::ostream & str, std::set<const Value *> & active, const Value & v);
 
 public:
+
+    /*
+     * An optional evaluation cache (for flakes in particular).
+     * If this is set, then trying to get a value from this attrset will first
+     * try to get it from the cache
+     */
+    std::shared_ptr<eval_cache::AttrCursor> evalCache;
 
     // Functions needed to distinguish the type
     // These should be removed eventually, by putting the functionality that's

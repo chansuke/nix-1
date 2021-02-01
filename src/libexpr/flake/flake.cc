@@ -2,6 +2,7 @@
 #include "lockfile.hh"
 #include "primops.hh"
 #include "eval-inline.hh"
+#include "eval-cache.hh"
 #include "store-api.hh"
 #include "fetchers.hh"
 #include "finally.hh"
@@ -620,6 +621,8 @@ void callFlake(EvalState & state,
     state.callFunction(**vCallFlake, *vLocks, *vTmp1, noPos);
     state.callFunction(*vTmp1, *vRootSrc, *vTmp2, noPos);
     state.callFunction(*vTmp2, *vRootSubdir, vRes, noPos);
+    auto evalCache = openEvalCache(state, std::make_shared<flake::LockedFlake>(lockedFlake));
+    vRes.evalCache = evalCache->getRoot();
 }
 
 static void prim_getFlake(EvalState & state, const Pos & pos, Value * * args, Value & v)
@@ -657,5 +660,34 @@ Fingerprint LockedFlake::getFingerprint() const
 }
 
 Flake::~Flake() { }
+
+ref<eval_cache::EvalCache> openEvalCache(
+    EvalState & state,
+    std::shared_ptr<flake::LockedFlake> lockedFlake)
+{
+    auto fingerprint = lockedFlake->getFingerprint();
+    return make_ref<nix::eval_cache::EvalCache>(
+        evalSettings.useEvalCache && evalSettings.pureEval
+            ? std::optional { std::cref(fingerprint) }
+            : std::nullopt,
+        state,
+        [&state, lockedFlake]()
+        {
+            /* For testing whether the evaluation cache is
+               complete. */
+            if (getEnv("NIX_ALLOW_EVAL").value_or("1") == "0")
+                throw Error("not everything is cached, but evaluation is not allowed");
+
+            auto vFlake = state.allocValue();
+            flake::callFlake(state, *lockedFlake, *vFlake);
+
+            state.forceAttrs(*vFlake);
+
+            auto aOutputs = vFlake->attrs->get(state.symbols.create("outputs"));
+            assert(aOutputs);
+
+            return aOutputs->value;
+        });
+}
 
 }

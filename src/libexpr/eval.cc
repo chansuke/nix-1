@@ -8,6 +8,7 @@
 #include "filetransfer.hh"
 #include "json.hh"
 #include "function-trace.hh"
+#include "eval-cache.hh"
 
 #include <algorithm>
 #include <chrono>
@@ -1126,12 +1127,48 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
 
     e->eval(state, env, vTmp);
 
+    std::vector<Symbol> evaluatedAttrs;
+    for (auto & i : attrPath) {
+        evaluatedAttrs.push_back(getName(i, state, env));
+    }
+    std::shared_ptr<eval_cache::AttrCursor> resultingCursor;
+    if (vTmp.evalCache)
+        resultingCursor = vTmp.evalCache->findAlongAttrPath(evaluatedAttrs);
+    if (resultingCursor) {
+        bool hasCachedRes = false;
+        if (auto cachedValue = resultingCursor->getCachedValue()) {
+            std::visit(overloaded {
+                [&](std::vector<Symbol>) {},
+                [&](eval_cache::placeholder_t) {},
+                [&](eval_cache::missing_t) {},
+                [&](eval_cache::misc_t) {},
+                [&](eval_cache::failed_t) {},
+                [&](eval_cache::string_t s) {
+                    PathSet context;
+                    for (auto & [pathName, outputName] : s.second) {
+                        context.insert("!" + outputName + "!" + pathName);
+                    }
+                    mkString(v, s.first, context);
+                    hasCachedRes = true;
+                },
+                [&](bool b) {
+                    v.mkBool(b);
+                    hasCachedRes = true;
+                },
+            }, *cachedValue);
+        }
+        if(hasCachedRes)
+            return;
+        v = resultingCursor->forceValue();
+        v.evalCache = resultingCursor;
+        return;
+    }
+
     try {
 
-        for (auto & i : attrPath) {
+        for (auto & name : evaluatedAttrs) {
             nrLookups++;
             Bindings::iterator j;
-            Symbol name = getName(i, state, env);
             if (def) {
                 state.forceValue(*vAttrs, pos);
                 if (vAttrs->type() != nAttrs ||

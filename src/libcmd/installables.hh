@@ -130,8 +130,4 @@ struct InstallableFlake : InstallableValue
     FlakeRef nixpkgsFlakeRef() const override;
 };
 
-ref<eval_cache::EvalCache> openEvalCache(
-    EvalState & state,
-    std::shared_ptr<flake::LockedFlake> lockedFlake);
-
 }
