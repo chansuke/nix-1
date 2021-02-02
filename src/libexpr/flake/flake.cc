@@ -622,7 +622,8 @@ void callFlake(EvalState & state,
     state.callFunction(*vTmp1, *vRootSrc, *vTmp2, noPos);
     state.callFunction(*vTmp2, *vRootSubdir, vRes, noPos);
     auto evalCache = openEvalCache(state, std::make_shared<flake::LockedFlake>(lockedFlake));
-    vRes.evalCache = evalCache->getRoot();
+    auto cacheRoot = evalCache->getRoot();
+    vRes.setCache(cacheRoot);
 }
 
 static void prim_getFlake(EvalState & state, const Pos & pos, Value * * args, Value & v)

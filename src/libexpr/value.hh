@@ -118,13 +118,6 @@ friend void printValue(std::ostream & str, std::set<const Value *> & active, con
 
 public:
 
-    /*
-     * An optional evaluation cache (for flakes in particular).
-     * If this is set, then trying to get a value from this attrset will first
-     * try to get it from the cache
-     */
-    std::shared_ptr<eval_cache::AttrCursor> evalCache;
-
     // Functions needed to distinguish the type
     // These should be removed eventually, by putting the functionality that's
     // needed by callers into methods of this type
@@ -358,6 +351,18 @@ public:
     bool isTrivial() const;
 
     std::vector<std::pair<Path, std::string>> getContext();
+
+    /*
+     * Set the associated cache view for this value.
+     * This cache will be used to speed-up some operations like accessing
+     * attribute sets elements.
+     */
+    void setCache(std::shared_ptr<eval_cache::AttrCursor>);
+
+    /*
+     * Get the cache associated with this value, if any.
+     */
+    std::shared_ptr<eval_cache::AttrCursor> getCache();
 };
 
 

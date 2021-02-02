@@ -1132,8 +1132,9 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
         evaluatedAttrs.push_back(getName(i, state, env));
     }
     std::shared_ptr<eval_cache::AttrCursor> resultingCursor;
-    if (vTmp.evalCache)
-        resultingCursor = vTmp.evalCache->findAlongAttrPath(evaluatedAttrs);
+    auto evalCache = vTmp.getCache();
+    if (evalCache)
+        resultingCursor = evalCache->findAlongAttrPath(evaluatedAttrs);
     if (resultingCursor) {
         bool hasCachedRes = false;
         if (auto cachedValue = resultingCursor->getCachedValue()) {
@@ -1160,7 +1161,7 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
         if(hasCachedRes)
             return;
         v = resultingCursor->forceValue();
-        v.evalCache = resultingCursor;
+        v.setCache(resultingCursor);
         resultingCursor->root->commit();
         return;
     }
@@ -1758,6 +1759,18 @@ std::vector<std::pair<Path, std::string>> Value::getContext()
     return res;
 }
 
+void Value::setCache(std::shared_ptr<eval_cache::AttrCursor> cache)
+{
+    if (internalType == tAttrs)
+        attrs->evalCache = cache;
+}
+
+std::shared_ptr<eval_cache::AttrCursor> Value::getCache()
+{
+    if (internalType == tAttrs)
+        return attrs->evalCache;
+    return nullptr;
+}
 
 string EvalState::forceString(Value & v, PathSet & context, const Pos & pos)
 {
