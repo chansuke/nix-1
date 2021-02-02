@@ -662,16 +662,13 @@ Fingerprint LockedFlake::getFingerprint() const
 
 Flake::~Flake() { }
 
-ref<eval_cache::EvalCache> openEvalCache(
+std::shared_ptr<eval_cache::EvalCache> openEvalCache(
     EvalState & state,
     std::shared_ptr<flake::LockedFlake> lockedFlake)
 {
     auto fingerprint = lockedFlake->getFingerprint();
-    return make_ref<nix::eval_cache::EvalCache>(
-        evalSettings.useEvalCache && evalSettings.pureEval
-            ? std::optional { std::cref(fingerprint) }
-            : std::nullopt,
-        state,
+    return state.openCache(
+        fingerprint,
         [&state, lockedFlake]()
         {
             /* For testing whether the evaluation cache is

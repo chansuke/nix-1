@@ -142,7 +142,7 @@ void emitTreeAttrs(
     const fetchers::Input & input,
     Value & v, bool emptyRevFallback = false);
 
-ref<eval_cache::EvalCache> openEvalCache(
+std::shared_ptr<eval_cache::EvalCache> openEvalCache(
     EvalState & state,
     std::shared_ptr<flake::LockedFlake> lockedFlake);
 }

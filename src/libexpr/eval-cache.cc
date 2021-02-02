@@ -313,8 +313,11 @@ void EvalCache::commit()
     if (db) {
         debug("Saving the cache");
         auto state(db->_state->lock());
-        if (state->txn->active)
+        if (state->txn->active) {
             state->txn->commit();
+            state->txn.reset();
+            state->txn = std::make_unique<SQLiteTxn>(state->db);
+        }
     }
 }
 
@@ -633,6 +636,23 @@ StorePath AttrCursor::forceDerivation()
                 root->state.store->printStorePath(drvPath));
     }
     return drvPath;
+}
+
+}
+
+namespace nix {
+std::shared_ptr<eval_cache::EvalCache> EvalState::openCache(Hash cacheKey, eval_cache::EvalCache::RootLoader rootLoader)
+{
+    if (auto iter = evalCache.find(cacheKey); iter != evalCache.end())
+        return iter->second;
+
+    auto thisCache = std::make_shared<eval_cache::EvalCache>(
+        evalSettings.useEvalCache && evalSettings.pureEval
+            ? std::optional{std::cref(cacheKey)}
+            : std::nullopt,
+        *this, rootLoader);
+    evalCache.insert({cacheKey, thisCache});
+    return thisCache;
 }
 
 }

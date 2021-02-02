@@ -5,6 +5,8 @@
 #include "nixexpr.hh"
 #include "symbol-table.hh"
 #include "config.hh"
+#include "hash.hh"
+#include "sqlite.hh"
 
 #include <map>
 #include <optional>
@@ -14,6 +16,9 @@
 
 namespace nix {
 
+namespace eval_cache {
+    class EvalCache;
+}
 
 class Store;
 class EvalState;
@@ -116,6 +121,8 @@ private:
 #endif
     FileEvalCache fileEvalCache;
 
+    std::map<Hash, std::shared_ptr<eval_cache::EvalCache>> evalCache;
+
     SearchPath searchPath;
 
     std::map<std::string, std::pair<bool, std::string>> searchPathResolved;
@@ -130,6 +137,8 @@ public:
 
     EvalState(const Strings & _searchPath, ref<Store> store);
     ~EvalState();
+
+    std::shared_ptr<eval_cache::EvalCache> openCache(Hash, std::function<Value *()> rootLoader);
 
     void addToSearchPath(const string & s);
 

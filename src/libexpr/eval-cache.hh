@@ -16,11 +16,14 @@ class AttrCursor;
 
 class EvalCache : public std::enable_shared_from_this<EvalCache>
 {
+public:
+    typedef std::function<Value *()> RootLoader;
+
+private:
     friend class AttrCursor;
 
     std::shared_ptr<AttrDb> db;
     EvalState & state;
-    typedef std::function<Value *()> RootLoader;
     RootLoader rootLoader;
     RootValue value;
 
