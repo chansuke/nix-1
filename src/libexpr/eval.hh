@@ -312,6 +312,8 @@ public:
     void mkThunk_(Value & v, Expr * expr);
     void mkPos(Value & v, Pos * pos);
 
+    void getAttrField(Value & attrs, std::vector<Symbol> & selector, Pos & pos, Value & dest);
+
     void concatLists(Value & v, size_t nrLists, Value * * lists, const Pos & pos);
 
     /* Print statistics. */

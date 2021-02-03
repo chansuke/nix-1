@@ -1119,22 +1119,12 @@ static string showAttrPath(EvalState & state, Env & env, const AttrPath & attrPa
 
 unsigned long nrLookups = 0;
 
-void ExprSelect::eval(EvalState & state, Env & env, Value & v)
+void EvalState::getAttrField(Value & attrs, std::vector<Symbol> & selector, Pos & pos, Value & dest)
 {
-    Value vTmp;
-    Pos * pos2 = 0;
-    Value * vAttrs = &vTmp;
-
-    e->eval(state, env, vTmp);
-
-    std::vector<Symbol> evaluatedAttrs;
-    for (auto & i : attrPath) {
-        evaluatedAttrs.push_back(getName(i, state, env));
-    }
     std::shared_ptr<eval_cache::AttrCursor> resultingCursor;
-    auto evalCache = vTmp.getCache();
+    auto evalCache = attrs.getCache();
     if (evalCache)
-        resultingCursor = evalCache->findAlongAttrPath(evaluatedAttrs);
+        resultingCursor = evalCache->findAlongAttrPath(selector);
     if (resultingCursor) {
         bool hasCachedRes = false;
         if (auto cachedValue = resultingCursor->getCachedValue()) {
@@ -1149,56 +1139,70 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
                     for (auto & [pathName, outputName] : s.second) {
                         context.insert("!" + outputName + "!" + pathName);
                     }
-                    mkString(v, s.first, context);
+                    mkString(dest, s.first, context);
                     hasCachedRes = true;
                 },
                 [&](bool b) {
-                    v.mkBool(b);
+                    dest.mkBool(b);
                     hasCachedRes = true;
                 },
             }, *cachedValue);
         }
         if(hasCachedRes)
             return;
-        v = resultingCursor->forceValue();
-        v.setCache(resultingCursor);
+        dest = resultingCursor->forceValue();
+        dest.setCache(resultingCursor);
         resultingCursor->root->commit();
         return;
     }
 
-    try {
+    Pos * pos2 = 0;
+    Value * currentValue = &attrs;
 
-        for (auto & name : evaluatedAttrs) {
-            nrLookups++;
-            Bindings::iterator j;
-            if (def) {
-                state.forceValue(*vAttrs, pos);
-                if (vAttrs->type() != nAttrs ||
-                    (j = vAttrs->attrs->find(name)) == vAttrs->attrs->end())
-                {
-                    def->eval(state, env, v);
-                    return;
-                }
-            } else {
-                state.forceAttrs(*vAttrs, pos);
-                if ((j = vAttrs->attrs->find(name)) == vAttrs->attrs->end())
-                    throwEvalError(pos, "attribute '%1%' missing", name);
-            }
-            vAttrs = j->value;
-            pos2 = j->pos;
-            if (state.countCalls && pos2) state.attrSelects[*pos2]++;
-        }
-
-        state.forceValue(*vAttrs, ( pos2 != NULL ? *pos2 : this->pos ) );
-
-    } catch (Error & e) {
-        if (pos2 && pos2->file != state.sDerivationNix)
-            addErrorTrace(e, *pos2, "while evaluating the attribute '%1%'",
-                showAttrPath(state, env, attrPath));
-        throw;
+    for (auto & name : selector) {
+        nrLookups++;
+        Bindings::iterator j;
+            forceAttrs(*currentValue, pos);
+            if ((j = currentValue->attrs->find(name)) == currentValue->attrs->end())
+                throwEvalError(pos, "attribute '%1%' missing", name);
+        currentValue = j->value;
+        pos2 = j->pos;
+        if (countCalls && pos2) attrSelects[*pos2]++;
     }
 
-    v = *vAttrs;
+    dest = *currentValue;
+
+    forceValue(dest, ( pos2 != NULL ? *pos2 : pos ) );
+}
+
+void ExprSelect::eval(EvalState & state, Env & env, Value & v)
+{
+    Value vTmp;
+
+    e->eval(state, env, vTmp);
+
+    std::vector<Symbol> evaluatedAttrs;
+    for (auto & i : attrPath) {
+        evaluatedAttrs.push_back(getName(i, state, env));
+    }
+
+    try {
+        try {
+            state.getAttrField(vTmp, evaluatedAttrs, pos, v);
+        } catch (EvalError & e) {
+            if (def) {
+                def->eval(state, env, v);
+                return;
+            } else {
+                throw;
+            }
+        }
+    } catch (Error & e) {
+        if (pos.file != state.sDerivationNix)
+            addErrorTrace(e, pos, "while evaluating the attribute '%1%'",
+                    showAttrPath(state, env, attrPath));
+        throw;
+    }
 }
 
 
