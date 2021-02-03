@@ -1119,7 +1119,7 @@ static string showAttrPath(EvalState & state, Env & env, const AttrPath & attrPa
 
 unsigned long nrLookups = 0;
 
-void EvalState::getAttrField(Value & attrs, std::vector<Symbol> & selector, Pos & pos, Value & dest)
+EvalState::AttrAccesResult EvalState::getOptionalAttrField(Value & attrs, const std::vector<Symbol> & selector, const Pos & pos, Value & dest)
 {
     std::shared_ptr<eval_cache::AttrCursor> resultingCursor;
     auto evalCache = attrs.getCache();
@@ -1149,22 +1149,29 @@ void EvalState::getAttrField(Value & attrs, std::vector<Symbol> & selector, Pos 
             }, *cachedValue);
         }
         if(hasCachedRes)
-            return;
+            return std::nullopt;
         dest = resultingCursor->forceValue();
         dest.setCache(resultingCursor);
         resultingCursor->root->commit();
-        return;
+        return std::nullopt;
     }
 
-    Pos * pos2 = 0;
+    const Pos * pos2 = &pos;
     Value * currentValue = &attrs;
 
     for (auto & name : selector) {
         nrLookups++;
         Bindings::iterator j;
-            forceAttrs(*currentValue, pos);
+            forceValue(*currentValue);
+            if (currentValue->type() != nAttrs)
+                return {AttrAccessError{
+                    .pos = pos2,
+                    .attrName = name,
+                    .illTypedValue = currentValue,
+                }
+            };
             if ((j = currentValue->attrs->find(name)) == currentValue->attrs->end())
-                throwEvalError(pos, "attribute '%1%' missing", name);
+                return {AttrAccessError { pos2, name }};
         currentValue = j->value;
         pos2 = j->pos;
         if (countCalls && pos2) attrSelects[*pos2]++;
@@ -1173,6 +1180,23 @@ void EvalState::getAttrField(Value & attrs, std::vector<Symbol> & selector, Pos 
     dest = *currentValue;
 
     forceValue(dest, ( pos2 != NULL ? *pos2 : pos ) );
+
+    return std::nullopt;
+}
+
+void EvalState::getAttrField(Value & attrs, const std::vector<Symbol> & selector, const Pos & pos, Value & dest)
+{
+    auto missingFieldInfo = getOptionalAttrField(attrs, selector, pos, dest);
+    if (missingFieldInfo) {
+        if (missingFieldInfo->illTypedValue) {
+            throwTypeError("value is %1% while a set was expected", **missingFieldInfo->illTypedValue);
+        } else {
+            throwEvalError(
+                    *missingFieldInfo->pos,
+                    "attribute '%1%' missing", missingFieldInfo->attrName
+            );
+        }
+    }
 }
 
 void ExprSelect::eval(EvalState & state, Env & env, Value & v)
@@ -1187,16 +1211,15 @@ void ExprSelect::eval(EvalState & state, Env & env, Value & v)
     }
 
     try {
-        try {
-            state.getAttrField(vTmp, evaluatedAttrs, pos, v);
-        } catch (EvalError & e) {
-            if (def) {
+        if (def) {
+            auto missingFieldInfo = state.getOptionalAttrField(vTmp, evaluatedAttrs, pos, v);
+            if (missingFieldInfo) {
                 def->eval(state, env, v);
                 return;
-            } else {
-                throw;
             }
+            return;
         }
+        state.getAttrField(vTmp, evaluatedAttrs, pos, v);
     } catch (Error & e) {
         if (pos.file != state.sDerivationNix)
             addErrorTrace(e, pos, "while evaluating the attribute '%1%'",
@@ -1769,7 +1792,7 @@ void Value::setCache(std::shared_ptr<eval_cache::AttrCursor> cache)
         attrs->evalCache = cache;
 }
 
-std::shared_ptr<eval_cache::AttrCursor> Value::getCache()
+std::shared_ptr<eval_cache::AttrCursor> Value::getCache() const
 {
     if (internalType == tAttrs)
         return attrs->evalCache;

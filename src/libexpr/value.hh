@@ -362,7 +362,7 @@ public:
     /*
      * Get the cache associated with this value, if any.
      */
-    std::shared_ptr<eval_cache::AttrCursor> getCache();
+    std::shared_ptr<eval_cache::AttrCursor> getCache() const;
 };
 
 

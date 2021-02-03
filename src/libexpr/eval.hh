@@ -312,7 +312,17 @@ public:
     void mkThunk_(Value & v, Expr * expr);
     void mkPos(Value & v, Pos * pos);
 
-    void getAttrField(Value & attrs, std::vector<Symbol> & selector, Pos & pos, Value & dest);
+    struct AttrAccessError {
+        const Pos * pos;
+        const Symbol attrName;
+
+        // To distinguish between a missing field in an attribute set
+        // and an access to something that's not an attribute set
+        std::optional<Value* > illTypedValue;
+    };
+    using AttrAccesResult = std::optional<AttrAccessError>;
+    AttrAccesResult getOptionalAttrField(Value & attrs, const std::vector<Symbol> & selector, const Pos & pos, Value & dest);
+    void getAttrField(Value & attrs, const std::vector<Symbol> & selector, const Pos & pos, Value & dest);
 
     void concatLists(Value & v, size_t nrLists, Value * * lists, const Pos & pos);
 
