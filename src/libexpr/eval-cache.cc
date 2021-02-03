@@ -326,7 +326,7 @@ AttrCursor::AttrCursor(
     Parent parent,
     Value * value,
     std::optional<std::pair<AttrId, AttrValue>> && cachedValue)
-    : root(root), parent(parent), cachedValue(std::move(cachedValue))
+    : parent(parent), cachedValue(std::move(cachedValue)), root(root)
 {
     if (value)
         _value = allocRootValue(value);
