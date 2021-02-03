@@ -1868,9 +1868,10 @@ string EvalState::coerceToString(const Pos & pos, Value & v, PathSet & context,
         if (maybeString) {
             return *maybeString;
         }
-        auto i = v.attrs->find(sOutPath);
-        if (i == v.attrs->end()) throwTypeError(pos, "cannot coerce a set to a string");
-        return coerceToString(pos, *i->value, context, coerceMore, copyToStore);
+        Value outPath;
+        auto missingOutPath = getOptionalAttrField(v, {sOutPath}, pos, outPath);
+        if (missingOutPath) throwTypeError(pos, "cannot coerce a set to a string");
+        return coerceToString(pos, outPath, context, coerceMore, copyToStore);
     }
 
     if (v.type() == nExternal)
