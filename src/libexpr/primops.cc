@@ -814,16 +814,20 @@ static void prim_derivationStrict(EvalState & state, const Pos & pos, Value * * 
     state.forceAttrs(*args[0], pos);
 
     /* Figure out the name first (for stack backtraces). */
-    Bindings::iterator attr = args[0]->attrs->find(state.sName);
-    if (attr == args[0]->attrs->end())
-        throw EvalError({
-            .msg = hintfmt("required attribute 'name' missing"),
-            .errPos = pos
-        });
+    Value & arg = *(args[0]);
+
+    auto getOptionalAttr= [&](Symbol attrName) -> std::optional<Value> {
+        Value resOr;
+        auto didFail = state.getOptionalAttrField(arg, {attrName}, pos, resOr);
+        if (didFail) return std::nullopt; else return resOr;
+    };
+
+    state.getAttrField(arg, {state.sName}, pos, v);
+
     string drvName;
-    Pos & posDrvName(*attr->pos);
+    auto posDrvName = pos; // FIXME: Should be tho position of the `name` attribute
     try {
-        drvName = state.forceStringNoCtx(*attr->value, pos);
+        drvName = state.forceStringNoCtx(v, pos);
     } catch (Error & e) {
         e.addTrace(posDrvName, "while evaluating the derivation attribute 'name'");
         throw;
@@ -832,15 +836,15 @@ static void prim_derivationStrict(EvalState & state, const Pos & pos, Value * * 
     /* Check whether attributes should be passed as a JSON file. */
     std::ostringstream jsonBuf;
     std::unique_ptr<JSONObject> jsonObject;
-    attr = args[0]->attrs->find(state.sStructuredAttrs);
-    if (attr != args[0]->attrs->end() && state.forceBool(*attr->value, pos))
+    if (auto maybeRawObj = getOptionalAttr(state.sStructuredAttrs)) {
+        if (state.forceBool(*maybeRawObj, pos))
         jsonObject = std::make_unique<JSONObject>(jsonBuf);
+    }
 
     /* Check whether null attributes should be ignored. */
     bool ignoreNulls = false;
-    attr = args[0]->attrs->find(state.sIgnoreNulls);
-    if (attr != args[0]->attrs->end())
-        ignoreNulls = state.forceBool(*attr->value, pos);
+    if (auto maybeRawIgnoreNull = getOptionalAttr(state.sIgnoreNulls))
+        ignoreNulls = state.forceBool(*maybeRawIgnoreNull, pos);
 
     /* Build the derivation expression by processing the attributes. */
     Derivation drv;
@@ -856,9 +860,9 @@ static void prim_derivationStrict(EvalState & state, const Pos & pos, Value * * 
     StringSet outputs;
     outputs.insert("out");
 
-    for (auto & i : args[0]->attrs->lexicographicOrder()) {
-        if (i->name == state.sIgnoreNulls) continue;
-        const string & key = i->name;
+    for (auto & currentArg : args[0]->attrs->lexicographicOrder()) {
+        if (currentArg->name == state.sIgnoreNulls) continue;
+        const string & key = currentArg->name;
         vomit("processing attribute '%1%'", key);
 
         auto handleHashMode = [&](const std::string & s) {
@@ -900,22 +904,26 @@ static void prim_derivationStrict(EvalState & state, const Pos & pos, Value * * 
 
         try {
 
+            Value argValue;
+            state.getAttrField(arg, {currentArg->name}, pos, argValue);
+
+
             if (ignoreNulls) {
-                state.forceValue(*i->value, pos);
-                if (i->value->type() == nNull) continue;
+                state.forceValue(argValue, pos);
+                if (argValue.type() == nNull) continue;
             }
 
-            if (i->name == state.sContentAddressed) {
+            if (currentArg->name == state.sContentAddressed) {
                 settings.requireExperimentalFeature("ca-derivations");
-                contentAddressed = state.forceBool(*i->value, pos);
+                contentAddressed = state.forceBool(argValue, pos);
             }
 
             /* The `args' attribute is special: it supplies the
                command-line arguments to the builder. */
-            else if (i->name == state.sArgs) {
-                state.forceList(*i->value, pos);
-                for (unsigned int n = 0; n < i->value->listSize(); ++n) {
-                    string s = state.coerceToString(posDrvName, *i->value->listElems()[n], context, true);
+            else if (currentArg->name == state.sArgs) {
+                state.forceList(argValue, pos);
+                for (unsigned int n = 0; n < argValue.listSize(); ++n) {
+                    string s = state.coerceToString(posDrvName, *argValue.listElems()[n], context, true);
                     drv.args.push_back(s);
                 }
             }
@@ -926,39 +934,39 @@ static void prim_derivationStrict(EvalState & state, const Pos & pos, Value * * 
 
                 if (jsonObject) {
 
-                    if (i->name == state.sStructuredAttrs) continue;
+                    if (currentArg->name == state.sStructuredAttrs) continue;
 
                     auto placeholder(jsonObject->placeholder(key));
-                    printValueAsJSON(state, true, *i->value, placeholder, context);
+                    printValueAsJSON(state, true, argValue, placeholder, context);
 
-                    if (i->name == state.sBuilder)
-                        drv.builder = state.forceString(*i->value, context, posDrvName);
-                    else if (i->name == state.sSystem)
-                        drv.platform = state.forceStringNoCtx(*i->value, posDrvName);
-                    else if (i->name == state.sOutputHash)
-                        outputHash = state.forceStringNoCtx(*i->value, posDrvName);
-                    else if (i->name == state.sOutputHashAlgo)
-                        outputHashAlgo = state.forceStringNoCtx(*i->value, posDrvName);
-                    else if (i->name == state.sOutputHashMode)
-                        handleHashMode(state.forceStringNoCtx(*i->value, posDrvName));
-                    else if (i->name == state.sOutputs) {
+                    if (currentArg->name == state.sBuilder)
+                        drv.builder = state.forceString(argValue, context, posDrvName);
+                    else if (currentArg->name == state.sSystem)
+                        drv.platform = state.forceStringNoCtx(argValue, posDrvName);
+                    else if (currentArg->name == state.sOutputHash)
+                        outputHash = state.forceStringNoCtx(argValue, posDrvName);
+                    else if (currentArg->name == state.sOutputHashAlgo)
+                        outputHashAlgo = state.forceStringNoCtx(argValue, posDrvName);
+                    else if (currentArg->name == state.sOutputHashMode)
+                        handleHashMode(state.forceStringNoCtx(argValue, posDrvName));
+                    else if (currentArg->name == state.sOutputs) {
                         /* Require ‘outputs’ to be a list of strings. */
-                        state.forceList(*i->value, posDrvName);
+                        state.forceList(argValue, posDrvName);
                         Strings ss;
-                        for (unsigned int n = 0; n < i->value->listSize(); ++n)
-                            ss.emplace_back(state.forceStringNoCtx(*i->value->listElems()[n], posDrvName));
+                        for (unsigned int n = 0; n < argValue.listSize(); ++n)
+                            ss.emplace_back(state.forceStringNoCtx(*argValue.listElems()[n], posDrvName));
                         handleOutputs(ss);
                     }
 
                 } else {
-                    auto s = state.coerceToString(posDrvName, *i->value, context, true);
+                    auto s = state.coerceToString(posDrvName, argValue, context, true);
                     drv.env.emplace(key, s);
-                    if (i->name == state.sBuilder) drv.builder = s;
-                    else if (i->name == state.sSystem) drv.platform = s;
-                    else if (i->name == state.sOutputHash) outputHash = s;
-                    else if (i->name == state.sOutputHashAlgo) outputHashAlgo = s;
-                    else if (i->name == state.sOutputHashMode) handleHashMode(s);
-                    else if (i->name == state.sOutputs)
+                    if (currentArg->name == state.sBuilder) drv.builder = s;
+                    else if (currentArg->name == state.sSystem) drv.platform = s;
+                    else if (currentArg->name == state.sOutputHash) outputHash = s;
+                    else if (currentArg->name == state.sOutputHashAlgo) outputHashAlgo = s;
+                    else if (currentArg->name == state.sOutputHashMode) handleHashMode(s);
+                    else if (currentArg->name == state.sOutputs)
                         handleOutputs(tokenizeString<Strings>(s));
                 }
 
@@ -2013,17 +2021,8 @@ void prim_getAttr(EvalState & state, const Pos & pos, Value * * args, Value & v)
 {
     string attr = state.forceStringNoCtx(*args[0], pos);
     state.forceAttrs(*args[1], pos);
+    state.getAttrField(*args[1], {state.symbols.create(attr)}, pos, v);
     // !!! Should we create a symbol here or just do a lookup?
-    Bindings::iterator i = args[1]->attrs->find(state.symbols.create(attr));
-    if (i == args[1]->attrs->end())
-        throw EvalError({
-            .msg = hintfmt("attribute '%1%' missing", attr),
-            .errPos = pos
-        });
-    // !!! add to stack trace?
-    if (state.countCalls && i->pos) state.attrSelects[*i->pos]++;
-    state.forceValue(*i->value, pos);
-    v = *i->value;
 }
 
 static RegisterPrimOp primop_getAttr({
